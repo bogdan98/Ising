@@ -11,17 +11,22 @@
 #include <math.h>
 #include <random>
 #include <chrono>
+
 using namespace std;
 
 double JT = 0.5; // J/T ratio
+double hT = 0.0; //h is B*magnetic moment, T is temperature, hT is h/T
+double T = 100; //temperature
 int **conf;
 bool **inc;
 int Lx = 100; //size of the lattice in x-direction
 int Ly = 100; //size of the lattice in y-direction
-int N1 = 100000; //number of steps for Metropolis
-int N2 = 1000; //number of steps for Wolff
-int Nb = 2000; //number of blocks
+int Nb = 100; //number of blocks
+int Ns = 10; //number of superblocks used for error estimate
 int Zb = 1000; //number of steps in the block
+int Ntotal = Nb*Zb;
+double *values; //array containing calculated values after each MC step.
+//Used in error and autocorrelation estimates
 //sum of elements in the array size Lx by Ly
 double sum(int **arr, int x, int y){
   double result = 0;
@@ -59,6 +64,7 @@ void initialize(){
       inc[i][j] = false;
     }
   }
+  values = new double[Ntotal];
 }
 
 //function that returns the value of M
@@ -70,6 +76,26 @@ double net_magn(){
 //both can be used in Metropolis and Wolff (for values accummulation)
 double net_magn_sq(){
   return pow(sum(conf, Lx, Ly), 2.0);
+}
+
+//function that returns the value of the total energy of the lattice
+//can be estimated just by putting it in Metropolis/Wolff algorithm
+//useful for magnetic susceptibility/heat capacity/entropy estimates
+double total_energy(){
+  double energy = 0.0;
+  for (int i = 0; i < Lx - 1; i++){
+    for (int j = 0; j < Ly; j++){
+      energy = energy + conf[i][j]*conf[i + 1][j];
+    }
+  }
+
+  for (int i = 0; i < Ly - 1; i++){
+    for (int j = 0; j < Lx; j++){
+      energy = energy + conf[j][i]*conf[j][i + 1];
+    }
+  }
+
+  return -T*JT*energy - T*hT*net_magn();
 }
 
 //one step of Metropolis algorithm
@@ -96,7 +122,7 @@ void MetropolisStep(){
   if (neighbor < Ly){
     dE = dE + conf[x][neighbor];
   }
-  dE = dE*2*JT*conf[x][y];
+  dE = dE*2*JT*conf[x][y] + 2*hT*conf[x][y];
   R = exp(-dE);
   if ((R >= 1) || (((double) rand())/((double) RAND_MAX) < R)){
     conf[x][y] = -conf[x][y];
@@ -105,15 +131,16 @@ void MetropolisStep(){
 
 //Metropolis algorithm
 double Metropolis(){
-  double A = 0;
   int Z = 0;
+  double A = 0;
   srand(time(NULL));
   //to give new random values every time the algorithm
   //is called
-  while(Z<=N1){
+  while(Z < Ntotal){
+    MetropolisStep();
+    values[Z] = (double) abs(net_magn())/((double) Lx*Ly); //filling the array for later use in error estimates
     A = A + abs(net_magn());
     Z++;
-    MetropolisStep();
   }
   return A/((double) Z*Lx*Ly);
 }
@@ -162,15 +189,16 @@ double Wolff(){
   double A = 0;
   int Z = 0;
   srand(time(NULL));
-  while (Z<=N2){
-    Z++;
-    A = A + abs(net_magn());
+  while (Z < Ntotal){
     update_cluster();
+    values[Z] = abs(net_magn())/((double) Lx*Ly); //filling in the array for later use in error estimates
+    A = A + abs(net_magn());
     for (int i = 0; i < Lx; i++){
       for (int j = 0; j < Ly; j++){
         inc[i][j] = false;
       }
     }
+    Z++;
   }
   return A/((double) Z*Lx*Ly);
 }
@@ -185,18 +213,38 @@ double *MagnetizationCurve(double *JTs, int l, int size, int N, double(*f)()){
   return res;
 }
 
+//function that gives the error bars using the method of superblocks
+double error(){
+  double B[Ns];
+  double error = 0.0;
+  double avg = 0.0;
+  for (int i = 0; i < Ns; i++){
+    B[i] = 0.0;
+    for (int j = 0; j < Nb/Ns; j++){
+      for (int k = 0; k < Zb; k++){
+        B[i] = B[i] + values[(i + j*Ns)*Zb + k];
+      }
+    }
+    B[i] = B[i]/(Zb*Nb/Ns);
+    avg += B[i];
+  }
+  avg = avg/Ns;
+  for (int i = 0; i < Ns; i++){
+    error = error + pow((B[i] - avg), 2.0);
+  }
+  error = sqrt(error)/Ns;
+  return error;
+}
+
 //autocorrelation function using blocking method with Nb blocks and Zb steps in each block
 //can be measured for both Metropolis and Wolff algorithms
 double* Autocorrelation(){
-  double M = sum(conf, Lx, Ly);
   double* blockAv = new double[Nb];
   double *res = new double[Nb];
   for (int i = 0; i < Nb; i++){
     blockAv[i] = 0.0;
     for (int j = 0; j < Zb; j++){
-      blockAv[i] = blockAv[i] + abs(M);
-      MetropolisStep();
-      M = sum(conf, Lx, Ly);
+      blockAv[i] = blockAv[i] + values[i*Zb + j];
     }
     blockAv[i] = blockAv[i]/(Lx*Ly*Zb);
     printf("%d - %f\n", i, blockAv[i]);
@@ -218,7 +266,4 @@ double* Autocorrelation(){
 int main(){
   initialize();
   //everything is ready for work after initialization
-  double m1;
-  m1 = Wolff();
-  printf("%f", m1);
 }
