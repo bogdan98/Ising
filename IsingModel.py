@@ -2,14 +2,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy as sp
 import random
+from scipy.interpolate import interp1d
+import time
 
 global JT, hT, Lx, Ly, Zb, Nb, Ns, Iter, config, inc, values
-JT = 0.5 #J/T ratio
+JT0 = 0.5 #J/T ratio
 hT = 0.0 #H/T ratio
 Lx = 20 #size of lattice in x and y directions
 Ly = 20
 
-Zb = 100 #number of iterations in one block
+Zb = 1000 #number of iterations in one block
 Nb = 10 #number of blocks
 Ns = 1 #number of superblocks
 
@@ -25,7 +27,7 @@ ic = initialize()
 
 config = ic[0] #spins configuration
 inc = ic[1] #array used for Wolff cluster growth algorithm, shows whether a spin is included in the cluster
-values = ic[2] #array to keep track of total M values, used for error and autocorrelation estimates 
+values = ic[2] #array to keep track of total M values, used for error and autocorrelation estimates
 
 def Metropolis_Step():
     x = sp.random.randint(0, Lx-1)
@@ -60,40 +62,40 @@ def Metropolis():
         i+=1
     return A/Iter/(Lx*Ly)
 
-#Wolff algorithm	
-def Wolff():
+#Wolff algorithm
+def Wolff(JT):
     A = 0.0
     i = 0
     random.seed()
     while i<Iter:
-        update_Cluster()
+        update_Cluster(JT)
         values[i] = abs(sum(sum(config)))/(Lx*Ly)
         A+=abs(sum(sum(config)))
         i+=1
     return A/Iter/(Lx*Ly)
 
 
-def update_Cluster():
+def update_Cluster(JT):
     x = sp.random.randint(0, Lx-1)
     y = sp.random.randint(0, Ly-1)
     st = config[x][y]
-    grow_Cluster(st, x, y)
+    grow_Cluster(JT, st, x, y)
     inc.fill(False)
-	
-	
+
+
 #Wolff cluster growth algorithm, assuming periodic boundary conditions
-def grow_Cluster(st, xi, yi):
+def grow_Cluster(JT, st, xi, yi):
     inc[xi][yi] = True
     config[xi][yi] = -config[xi][yi]
 
     if inc[(xi+1) % Lx][yi]==False and config[(xi+1) % Lx][yi]==st and np.exp(-2.0*JT)<sp.random.random():
-        grow_Cluster(st, (xi+1) % Lx, yi)
+        grow_Cluster(JT, st, (xi+1) % Lx, yi)
     if inc[(xi-1) % Lx][yi]==False and config[(xi-1) % Lx][yi]==st and np.exp(-2.0*JT)<sp.random.random():
-        grow_Cluster(st, (xi-1) % Lx, yi)
+        grow_Cluster(JT, st, (xi-1) % Lx, yi)
     if inc[xi][(yi+1) % Ly]==False and config[xi][(yi + 1) % Ly]==st and np.exp(-2.0*JT)<sp.random.random():
-        grow_Cluster(st, xi, (yi+1) % Ly)
+        grow_Cluster(JT, st, xi, (yi+1) % Ly)
     if inc[xi][(yi-1) % Ly]==False and config[xi][(yi - 1) % Ly]==st and np.exp(-2.0*JT)<sp.random.random():
-        grow_Cluster(st, xi, (yi-1) % Ly)
+        grow_Cluster(JT, st, xi, (yi-1) % Ly)
 
 
 
@@ -120,3 +122,8 @@ def Autocorrelation():
     return acf
 
 
+#used for plotting a magnetization curve
+def curve(JTs):
+    vecw = np.vectorize(Wolff)
+    y = vecw(JTs)
+    return y
