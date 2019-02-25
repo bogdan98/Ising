@@ -19,11 +19,11 @@ double hT = 0.0; //h is B*magnetic moment, T is temperature, hT is h/T
 double T = 100; //temperature
 int **conf;
 bool **inc;
-int Lx = 100; //size of the lattice in x-direction
-int Ly = 100; //size of the lattice in y-direction
+int Lx = 20; //size of the lattice in x-direction
+int Ly = 20; //size of the lattice in y-direction
 int Nb = 100; //number of blocks
-int Ns = 10; //number of superblocks used for error estimate
-int Zb = 1000; //number of steps in the block
+int Ns = 1; //number of superblocks used for error estimate
+int Zb = 100; //number of steps in the block
 int Ntotal = Nb*Zb;
 double *values; //array containing calculated values after each MC step.
 //Used in error and autocorrelation estimates
@@ -151,26 +151,18 @@ double Metropolis(){
 void grow_cluster(int state, int xi, int yi){
   inc[xi][yi] = true;
   conf[xi][yi] = - conf[xi][yi];
-  if (xi < Lx - 1){
-    if ((inc[xi + 1][yi] == false) && (conf[xi + 1][yi] == state) && (exp(-2.0*JT) < ((double) rand())/((double) RAND_MAX))){
-      grow_cluster(state, xi + 1, yi);
+   if ((inc[(xi == Lx - 1) ? 0 : xi + 1][yi] == false) && (conf[(xi == Lx - 1) ? 0 : xi + 1][yi] == state) && (exp(-2.0*JT) < ((double) rand())/((double) RAND_MAX))){
+     grow_cluster(state, (xi == Lx - 1) ? 0 : xi + 1, yi);
+   }
+   if ((inc[(xi == 0) ? Lx - 1 : xi - 1][yi] == false) && (conf[(xi == 0) ? Lx - 1 : xi - 1][yi] == state) && (exp(-2.0*JT) < ((double) rand())/((double) RAND_MAX))){
+      grow_cluster(state, (xi == 0) ? Lx - 1 : xi - 1, yi);
     }
-  }
-  if (xi > 0){
-    if ((inc[xi - 1][yi] == false) && (conf[xi - 1][yi] == state) && (exp(-2.0*JT) < ((double) rand())/((double) RAND_MAX))){
-      grow_cluster(state, xi - 1, yi);
+	if ((inc[xi][(yi == Ly - 1) ? 0 : yi + 1] == false) && (conf[xi][(yi == Ly - 1) ? 0 : yi + 1] == state) && (exp(-2.0*JT) < ((double) rand())/((double) RAND_MAX))){
+      grow_cluster(state, xi, (yi == Ly - 1) ? 0 : yi + 1);
     }
-  }
-  if (yi < Ly - 1){
-    if ((inc[xi][yi + 1] == false) && (conf[xi][yi + 1] == state) && (exp(-2.0*JT) < ((double) rand())/((double) RAND_MAX))){
-      grow_cluster(state, xi, yi + 1);
+	if ((inc[xi][(yi == 0) ? Ly - 1 : yi - 1] == false) && (conf[xi][(yi == 0) ? Ly - 1 : yi - 1] == state) && (exp(-2.0*JT) < ((double) rand())/((double) RAND_MAX))){
+      grow_cluster(state, xi, (yi == 0) ? Ly - 1 : yi - 1);
     }
-  }
-  if (yi > 0){
-    if ((inc[xi][yi - 1] == false) && (conf[xi][yi - 1] == state) && (exp(-2.0*JT) < ((double) rand())/((double) RAND_MAX))){
-      grow_cluster(state, xi, yi - 1);
-    }
-  }
 }
 
 //function that updates the cluster
